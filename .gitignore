@@ -1,0 +1,13 @@
+.env
+.cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# результаты и данные — не коммитим
+results/
+data/
+
+# Claude Code
+.claude/
