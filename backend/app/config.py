@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 480  # 8 часов
     admin_username: str
     admin_password: str
+    hh_token: str = ""
+    hh_user_agent: str = "HR-Scoring-Tool/1.0 (user@example.com)"
+    sj_api_key: str = ""
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    scoring_model: str = "deepseek-chat"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
