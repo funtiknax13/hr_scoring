@@ -10,7 +10,7 @@ from app.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.auth import LoginRequest, Token, UserOut
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def verify_password(plain: str, hashed: str) -> bool:

@@ -42,7 +42,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
           <a
-            href="/admin"
+            href="http://localhost:8000/admin"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"
