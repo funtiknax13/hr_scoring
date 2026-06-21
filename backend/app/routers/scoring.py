@@ -1,8 +1,10 @@
 import json
+import re
 from datetime import datetime, timezone
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.deps import get_db, require_permission
@@ -13,7 +15,9 @@ from app.models.scoring import (
     ScoringCandidate, ScoringJob, ScoringResult, ScoringVacancy,
 )
 from app.models.user import User
-from app.schemas.scoring import CandidateResultOut, ScoringJobDetailOut, ScoringJobOut
+from app.schemas.scoring import (
+    CandidateResultOut, ScoringJobDetailOut, ScoringJobOut, ScoringVacancyOut,
+)
 from app.services.scoring_engine import (
     PROMPT_VERSIONS,
     build_rubric, compute_total, extract_profile,
@@ -23,6 +27,31 @@ from app.services.scoring_engine import (
 router = APIRouter(prefix="/api/scoring", tags=["scoring"])
 
 SUPPORTED = {".md", ".txt", ".pdf", ".docx", ".html", ".htm"}
+
+
+# ----------------------------- Вспомогательное ---------------------------------
+
+def _parse_expected_score(filename: str) -> int | None:
+    """Извлекает эталонный балл из имени файла: 'anna_85.md' → 85."""
+    stem = Path(filename).stem
+    m = re.search(r"_(\d+)$", stem)
+    return int(m.group(1)) if m else None
+
+
+def _kendall_tau(pairs: list[tuple[float, float]]) -> float:
+    """Kendall's tau между ожидаемыми и реальными баллами."""
+    n = len(pairs)
+    concordant = discordant = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            e_sign = pairs[i][0] - pairs[j][0]
+            a_sign = pairs[i][1] - pairs[j][1]
+            if e_sign * a_sign > 0:
+                concordant += 1
+            elif e_sign * a_sign < 0:
+                discordant += 1
+    total = n * (n - 1) // 2
+    return round((concordant - discordant) / total, 3) if total > 0 else 0.0
 
 
 # ----------------------------- Фоновая задача ----------------------------------
@@ -76,6 +105,26 @@ def _run_job(job_id: int) -> None:
                 result.error = str(e)
             db.commit()
 
+        # Eval: считаем Kendall's tau если режим тестирования
+        if job.is_eval and job.expected_scores:
+            expected = json.loads(job.expected_scores)
+            all_results = (
+                db.query(ScoringResult)
+                .filter(ScoringResult.job_id == job_id)
+                .all()
+            )
+            pairs: list[tuple[float, float]] = []
+            for result in all_results:
+                if result.total_score is None:
+                    continue
+                cand = db.query(ScoringCandidate).filter(
+                    ScoringCandidate.id == result.candidate_id
+                ).first()
+                if cand and cand.filename in expected:
+                    pairs.append((float(expected[cand.filename]), result.total_score))
+            if len(pairs) >= 2:
+                job.eval_tau = _kendall_tau(pairs)
+
         job.status = JobStatus.done
         job.finished_at = datetime.now(timezone.utc)
         db.commit()
@@ -93,36 +142,69 @@ def _run_job(job_id: int) -> None:
 
 # ----------------------------- Эндпоинты --------------------------------------
 
+@router.get("/vacancies", response_model=list[ScoringVacancyOut])
+def list_vacancies(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission(Permission.SCORING_VIEW)),
+):
+    return (
+        db.query(ScoringVacancy)
+        .order_by(ScoringVacancy.created_at.desc())
+        .limit(100)
+        .all()
+    )
+
+
 @router.post("/jobs", response_model=ScoringJobOut, status_code=201)
 async def create_job(
     background_tasks: BackgroundTasks,
-    vacancy_file: Annotated[UploadFile, File(description="Файл вакансии")],
     resume_files: Annotated[list[UploadFile], File(description="Файлы резюме")],
+    vacancy_file: Optional[UploadFile] = File(None, description="Файл вакансии"),
+    vacancy_id: Optional[int] = Form(None, description="ID существующей вакансии"),
+    is_eval: str = Form("false"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(Permission.SCORING_RUN)),
 ):
-    # Валидация форматов
-    all_files = [vacancy_file] + resume_files
-    for f in all_files:
+    if not vacancy_file and not vacancy_id:
+        raise HTTPException(400, "Укажите файл вакансии или выберите существующую вакансию")
+
+    # Валидация форматов резюме
+    for f in resume_files:
         ext = "." + (f.filename or "").rsplit(".", 1)[-1].lower()
         if ext not in SUPPORTED:
             raise HTTPException(400, f"Неподдерживаемый формат: {f.filename}")
 
-    # Читаем вакансию
-    vacancy_content = await vacancy_file.read()
-    vacancy_text = read_file_bytes(vacancy_content, vacancy_file.filename or "vacancy.txt")
-    vacancy_hash = sha256_hex(vacancy_text)
-
     # Находим или создаём вакансию
-    vacancy = db.query(ScoringVacancy).filter(ScoringVacancy.text_hash == vacancy_hash).first()
-    if not vacancy:
-        vacancy = ScoringVacancy(
-            text_hash=vacancy_hash,
-            text=vacancy_text,
-            filename=vacancy_file.filename or "vacancy.txt",
-        )
-        db.add(vacancy)
-        db.flush()
+    if vacancy_file:
+        ext = "." + (vacancy_file.filename or "").rsplit(".", 1)[-1].lower()
+        if ext not in SUPPORTED:
+            raise HTTPException(400, f"Неподдерживаемый формат: {vacancy_file.filename}")
+        vacancy_content = await vacancy_file.read()
+        vacancy_text = read_file_bytes(vacancy_content, vacancy_file.filename or "vacancy.txt")
+        vacancy_hash = sha256_hex(vacancy_text)
+        vacancy = db.query(ScoringVacancy).filter(ScoringVacancy.text_hash == vacancy_hash).first()
+        if not vacancy:
+            vacancy = ScoringVacancy(
+                text_hash=vacancy_hash,
+                text=vacancy_text,
+                filename=vacancy_file.filename or "vacancy.txt",
+            )
+            db.add(vacancy)
+            db.flush()
+    else:
+        vacancy = db.query(ScoringVacancy).filter(ScoringVacancy.id == vacancy_id).first()
+        if not vacancy:
+            raise HTTPException(404, "Вакансия не найдена")
+
+    eval_mode = is_eval.lower() == "true"
+
+    # Собираем эталонные баллы из имён файлов резюме
+    expected_scores: dict[str, int] = {}
+    if eval_mode:
+        for rf in resume_files:
+            score = _parse_expected_score(rf.filename or "")
+            if score is not None:
+                expected_scores[rf.filename or ""] = score
 
     # Создаём задание
     job = ScoringJob(
@@ -131,6 +213,8 @@ async def create_job(
         model_name=__import__("app.config", fromlist=["settings"]).settings.scoring_model,
         prompt_versions=json.dumps(PROMPT_VERSIONS),
         created_by=current_user.id,
+        is_eval=eval_mode,
+        expected_scores=json.dumps(expected_scores) if expected_scores else None,
     )
     db.add(job)
     db.flush()
@@ -159,7 +243,6 @@ async def create_job(
             db.add(candidate)
             db.flush()
 
-        # Проверяем: уже есть done-результат для этой пары?
         existing = (
             db.query(ScoringResult)
             .filter(
@@ -171,7 +254,6 @@ async def create_job(
         )
 
         if existing:
-            # Добавляем skipped-строку чтобы показать в этом job
             db.add(ScoringResult(
                 job_id=job.id,
                 vacancy_id=vacancy.id,
@@ -198,7 +280,20 @@ async def create_job(
     if new_count > 0:
         background_tasks.add_task(_run_job, job.id)
     else:
-        # Все уже скорированы
+        # Все уже скорированы — считаем eval сразу
+        if eval_mode and expected_scores:
+            all_results = db.query(ScoringResult).filter(ScoringResult.job_id == job.id).all()
+            pairs: list[tuple[float, float]] = []
+            for result in all_results:
+                if result.total_score is None:
+                    continue
+                cand = db.query(ScoringCandidate).filter(
+                    ScoringCandidate.id == result.candidate_id
+                ).first()
+                if cand and cand.filename in expected_scores:
+                    pairs.append((float(expected_scores[cand.filename]), result.total_score))
+            if len(pairs) >= 2:
+                job.eval_tau = _kendall_tau(pairs)
         job.status = JobStatus.done
         job.finished_at = datetime.now(timezone.utc)
         db.commit()
@@ -253,6 +348,9 @@ def _job_to_out(job: ScoringJob, db: Session) -> ScoringJobOut:
         total_candidates=len(results),
         done_candidates=sum(1 for r in results if r.status == ResultStatus.done),
         skipped_candidates=sum(1 for r in results if r.status == ResultStatus.skipped),
+        is_eval=job.is_eval,
+        expected_scores=job.expected_scores,
+        eval_tau=job.eval_tau,
     )
 
 

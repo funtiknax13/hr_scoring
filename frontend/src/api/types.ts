@@ -9,6 +9,13 @@ export interface UserMe {
 export type JobStatus = 'pending' | 'running' | 'done' | 'error'
 export type ResultStatus = 'pending' | 'done' | 'skipped' | 'error'
 
+export interface ScoringVacancyOut {
+  id: number
+  title: string | null
+  filename: string
+  created_at: string
+}
+
 export interface ScoringJobOut {
   id: number
   vacancy_id: number
@@ -23,6 +30,9 @@ export interface ScoringJobOut {
   total_candidates: number
   done_candidates: number
   skipped_candidates: number
+  is_eval: boolean
+  expected_scores: string | null
+  eval_tau: number | null
 }
 
 export interface CandidateResultOut {

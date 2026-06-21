@@ -61,6 +61,9 @@ class ScoringJob(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     finished_at = Column(DateTime(timezone=True), nullable=True)
+    is_eval = Column(Boolean, nullable=False, default=False)
+    expected_scores = Column(Text, nullable=True)  # JSON: {"anna_85.md": 85, ...}
+    eval_tau = Column(Float, nullable=True)
 
     vacancy = relationship("ScoringVacancy", back_populates="jobs")
     results = relationship("ScoringResult", back_populates="job")

@@ -5,6 +5,15 @@ from pydantic import BaseModel
 from app.models.scoring import JobStatus, ResultStatus
 
 
+class ScoringVacancyOut(BaseModel):
+    id: int
+    title: str | None
+    filename: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class CandidateResultOut(BaseModel):
     id: int
     candidate_id: int
@@ -36,6 +45,9 @@ class ScoringJobOut(BaseModel):
     total_candidates: int = 0
     done_candidates: int = 0
     skipped_candidates: int = 0
+    is_eval: bool = False
+    expected_scores: str | None = None
+    eval_tau: float | None = None
 
     model_config = {"from_attributes": True}
 
