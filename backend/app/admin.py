@@ -4,13 +4,14 @@ from typing import Any
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
-from wtforms import PasswordField
+from wtforms import PasswordField, SelectField
 
 from app.config import settings
 from app.database import SessionLocal, engine
 from app.models.user import Role, User
 from app.models.vacancy import FetchSession, Vacancy, VacancySnapshot
 from app.models.scoring import ScoringVacancy, ScoringCandidate, ScoringJob, ScoringResult
+from app.models.schedule import ScheduledSearch, ScheduledSearchLog
 
 
 class AdminAuth(AuthenticationBackend):
@@ -146,6 +147,50 @@ class ScoringResultAdmin(ModelView, model=ScoringResult):
     can_edit = False
 
 
+class ScheduledSearchAdmin(ModelView, model=ScheduledSearch):
+    name = "Расписание"
+    name_plural = "Расписание выгрузок"
+    icon = "fa-solid fa-clock"
+    column_list = ["id", "source", "query", "city", "cron", "is_active", "last_run_at", "created_at"]
+    column_sortable_list = ["id", "source", "is_active", "last_run_at"]
+    column_searchable_list = ["query", "source"]
+    form_excluded_columns = ["created_at", "last_run_at", "logs"]
+    form_overrides = {"source": SelectField, "is_active": SelectField}
+    form_args = {
+        "source": {
+            "label": "Источник",
+            "choices": [("hh", "HeadHunter (hh)"), ("sj", "SuperJob (sj)")],
+        },
+        "cron": {
+            "label": "Расписание (cron)",
+            "description": (
+                "Формат: минуты часы день месяц день_недели  |  "
+                "0 9 * * 1 — каждый понедельник в 9:00  |  "
+                "0 9 * * 1,4 — пн и чт в 9:00  |  "
+                "0 */6 * * * — каждые 6 часов"
+            ),
+        },
+        "is_active": {
+            "label": "Активно",
+            "choices": [("true", "Да"), ("false", "Нет")],
+        },
+    }
+
+    async def on_model_change(self, data: dict, model: Any, is_created: bool, request: Request) -> None:
+        data["is_active"] = data.get("is_active") == "true"
+
+
+class ScheduledSearchLogAdmin(ModelView, model=ScheduledSearchLog):
+    name = "Лог выгрузки"
+    name_plural = "Логи выгрузок"
+    icon = "fa-solid fa-list-check"
+    column_list = ["id", "search_id", "started_at", "finished_at", "status", "vacancies_found", "error"]
+    column_sortable_list = ["id", "started_at", "status", "vacancies_found"]
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
 def create_admin(app: Any) -> None:
     auth_backend = AdminAuth(secret_key=settings.secret_key)
     admin = Admin(app, engine, title="HR Scoring — Admin", authentication_backend=auth_backend)
@@ -157,3 +202,5 @@ def create_admin(app: Any) -> None:
     admin.add_view(ScoringCandidateAdmin)
     admin.add_view(ScoringJobAdmin)
     admin.add_view(ScoringResultAdmin)
+    admin.add_view(ScheduledSearchAdmin)
+    admin.add_view(ScheduledSearchLogAdmin)

@@ -9,5 +9,9 @@ venv/
 results/
 data/
 
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
 # Claude Code
 .claude/

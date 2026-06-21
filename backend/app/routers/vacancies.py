@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -13,62 +11,16 @@ from app.schemas.vacancy import (
     SnapshotOut,
     VacancyWithSnapshot,
 )
-from app.sources.registry import SOURCES
+from app.services.vacancy_service import run_search
 
 router = APIRouter(prefix="/api/vacancies", tags=["vacancies"])
 
 
 def _run_search(source_name: str, body: SearchRequest, db: Session) -> SessionOut:
-    source = SOURCES[source_name]
     try:
-        rows = source.search(body.query, body.city, body.max_pages)
+        session = run_search(source_name, body.query, body.city, body.max_pages, db)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
-
-    session = FetchSession(
-        source=source_name,
-        query=body.query,
-        city=body.city,
-        count=len(rows),
-    )
-    db.add(session)
-    db.flush()  # получаем session.id
-
-    now = datetime.now(timezone.utc)
-
-    for row in rows:
-        vacancy = (
-            db.query(Vacancy)
-            .filter(Vacancy.source == source_name, Vacancy.external_id == row.external_id)
-            .first()
-        )
-        if vacancy is None:
-            vacancy = Vacancy(
-                source=source_name,
-                external_id=row.external_id,
-                title=row.title,
-                location=row.location,
-                url=row.url,
-                first_seen=now,
-                last_seen=now,
-            )
-            db.add(vacancy)
-            db.flush()
-        else:
-            vacancy.last_seen = now
-            vacancy.title = row.title
-            vacancy.url = row.url
-
-        db.add(VacancySnapshot(
-            session_id=session.id,
-            vacancy_id=vacancy.id,
-            salary_from=row.salary_from,
-            salary_to=row.salary_to,
-            currency=row.currency,
-        ))
-
-    db.commit()
-    db.refresh(session)
     return SessionOut.model_validate(session)
 
 

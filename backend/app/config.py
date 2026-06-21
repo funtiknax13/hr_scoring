@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     scoring_model: str = "deepseek-chat"
+    redis_url: str = "redis://redis:6379/0"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
