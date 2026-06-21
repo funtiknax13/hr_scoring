@@ -5,7 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
-from app.deps import get_current_user, get_db
+from app.deps import get_db, require_permission
+from app.permissions import Permission
 from app.database import SessionLocal
 from app.models.scoring import (
     JobStatus, ResultStatus,
@@ -98,7 +99,7 @@ async def create_job(
     vacancy_file: Annotated[UploadFile, File(description="Файл вакансии")],
     resume_files: Annotated[list[UploadFile], File(description="Файлы резюме")],
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.SCORING_RUN)),
 ):
     # Валидация форматов
     all_files = [vacancy_file] + resume_files
@@ -207,13 +208,13 @@ async def create_job(
 
 
 @router.get("/jobs", response_model=list[ScoringJobOut])
-def list_jobs(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_jobs(db: Session = Depends(get_db), _=Depends(require_permission(Permission.SCORING_VIEW))):
     jobs = db.query(ScoringJob).order_by(ScoringJob.created_at.desc()).limit(50).all()
     return [_job_to_out(j, db) for j in jobs]
 
 
 @router.get("/jobs/{job_id}", response_model=ScoringJobDetailOut)
-def get_job(job_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_job(job_id: int, db: Session = Depends(get_db), _=Depends(require_permission(Permission.SCORING_VIEW))):
     job = db.query(ScoringJob).filter(ScoringJob.id == job_id).first()
     if not job:
         raise HTTPException(404, "Задание не найдено")

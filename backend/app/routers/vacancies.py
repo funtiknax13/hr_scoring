@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.deps import get_current_user, get_db
+from app.deps import get_db, require_permission
+from app.permissions import Permission
 from app.models.vacancy import FetchSession, Vacancy, VacancySnapshot
 from app.schemas.vacancy import (
     SearchRequest,
@@ -72,12 +73,20 @@ def _run_search(source_name: str, body: SearchRequest, db: Session) -> SessionOu
 
 
 @router.post("/hh", response_model=SessionOut, summary="Выгрузить вакансии с HH")
-def search_hh(body: SearchRequest, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def search_hh(
+    body: SearchRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permission.VACANCY_FETCH)),
+):
     return _run_search("hh", body, db)
 
 
 @router.post("/sj", response_model=SessionOut, summary="Выгрузить вакансии с SuperJob")
-def search_sj(body: SearchRequest, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def search_sj(
+    body: SearchRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permission.VACANCY_FETCH)),
+):
     return _run_search("sj", body, db)
 
 
@@ -85,7 +94,7 @@ def search_sj(body: SearchRequest, db: Session = Depends(get_db), _=Depends(get_
 def list_sessions(
     source: str | None = None,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_permission(Permission.VACANCY_VIEW)),
 ):
     q = db.query(FetchSession).order_by(FetchSession.fetched_at.desc())
     if source:
@@ -94,7 +103,11 @@ def list_sessions(
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut, summary="Детали сессии выгрузки")
-def get_session(session_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permission.VACANCY_VIEW)),
+):
     session = db.query(FetchSession).filter(FetchSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Сессия не найдена")
@@ -122,7 +135,11 @@ def get_session(session_id: int, db: Session = Depends(get_db), _=Depends(get_cu
 
 
 @router.get("/{vacancy_id}/trend", response_model=list[SnapshotOut], summary="Тренд зарплаты по вакансии")
-def vacancy_trend(vacancy_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def vacancy_trend(
+    vacancy_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permission.VACANCY_VIEW)),
+):
     vacancy = db.query(Vacancy).filter(Vacancy.id == vacancy_id).first()
     if not vacancy:
         raise HTTPException(status_code=404, detail="Вакансия не найдена")

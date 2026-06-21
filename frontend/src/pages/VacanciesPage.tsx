@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react'
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import client from '../api/client'
+import { useAuth } from '../context/AuthContext'
 import { SessionDetailOut, SessionOut, VacancyWithSnapshot } from '../api/types'
 
 function fmt(v: number | null | undefined): string {
@@ -101,6 +102,8 @@ function SessionRow({ session }: { session: SessionOut }) {
 }
 
 export default function VacanciesPage() {
+  const { user } = useAuth()
+  const canFetch = user?.role !== 'analyst'
   const [source, setSource] = useState<'hh' | 'sj'>('hh')
   const [query, setQuery] = useState('')
   const [city, setCity] = useState('')
@@ -160,8 +163,8 @@ export default function VacanciesPage() {
         ))}
       </div>
 
-      {/* Search form */}
-      <form onSubmit={handleSearch} className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+      {/* Search form — только для admin и hr */}
+      {canFetch && <form onSubmit={handleSearch} className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Запрос</label>
@@ -222,7 +225,17 @@ export default function VacanciesPage() {
             Идёт выгрузка — это может занять до {maxPages * 5} секунд…
           </p>
         )}
-      </form>
+      </form>}
+
+      {/* Для аналитика — отдельная кнопка загрузки истории */}
+      {!canFetch && !loaded && (
+        <button
+          onClick={loadSessions}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          Показать историю
+        </button>
+      )}
 
       {/* Sessions */}
       {loaded && (

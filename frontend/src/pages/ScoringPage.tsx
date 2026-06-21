@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, ChevronUp, Upload, AlertTriangle } from 'lucide-react'
 import client from '../api/client'
+import { useAuth } from '../context/AuthContext'
 import {
   CandidateResultOut, CriterionScore, Rubric,
   ScoringJobDetailOut, ScoringJobOut, ScoringOutput, ResumeProfile,
@@ -237,6 +238,8 @@ function JobDetail({ job, onBack }: { job: ScoringJobDetailOut; onBack: () => vo
 }
 
 export default function ScoringPage() {
+  const { user } = useAuth()
+  const canRun = user?.role !== 'analyst'
   const vacancyRef = useRef<HTMLInputElement>(null)
   const resumesRef = useRef<HTMLInputElement>(null)
   const [vacancyFile, setVacancyFile] = useState<File | null>(null)
@@ -303,8 +306,8 @@ export default function ScoringPage() {
     <div className="max-w-3xl mx-auto space-y-6">
       <h1 className="text-xl font-bold text-gray-900">Скоринг резюме</h1>
 
-      {/* Upload form */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+      {/* Upload form — только для admin и hr */}
+      {canRun && <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Vacancy */}
           <div>
@@ -361,7 +364,7 @@ export default function ScoringPage() {
         >
           {submitting ? 'Отправка…' : '🚀 Запустить скоринг'}
         </button>
-      </div>
+      </div>}
 
       {/* Jobs list */}
       {jobs.length > 0 && (
