@@ -30,13 +30,11 @@
 (держать в актуальном виде по мере появления)
 
 - Запуск всего: `docker compose up`
-- Тесты: `pytest`
 - Линт/формат: `ruff check .` и `ruff format .`
 - Миграции (внутри контейнера): `alembic upgrade head`
-- Eval скоринга: `python -m eval.run`
-- Скоринг вручную: `python score.py`
-- Вакансии HH: `python hh_fetch.py`
-- Вакансии SuperJob: `python sj_fetch.py`
+- Скоринг вручную: `python scripts/score.py`
+- Вакансии HH: `python scripts/hh_fetch.py` (не работает, ожидает одобрения dev.hh.ru)
+- Вакансии SuperJob: `python scripts/sj_fetch.py`
 
 ## Правила скоринга (это ядро — здесь набираются баллы)
 

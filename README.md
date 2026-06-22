@@ -121,13 +121,13 @@ SOURCES: dict[str, BaseSource] = {
 
 ## Скрипты (автономный режим)
 
-CLI-скрипты остаются для отладки и ручных прогонов.
+CLI-скрипты лежат в `scripts/`, остаются для отладки и ручных прогонов.
 
 | Скрипт | Описание |
 |---|---|
-| `python score.py` | Скоринг из командной строки |
-| `python hh_fetch.py --auth` | Первичная авторизация HH (когда заработает) |
-| `python sj_fetch.py` | Ручная выгрузка SuperJob в CSV |
+| `python scripts/score.py` | Скоринг из командной строки |
+| `python scripts/hh_fetch.py --auth` | Первичная авторизация HH (когда заработает) |
+| `python scripts/sj_fetch.py` | Ручная выгрузка SuperJob в CSV |
 
 ---
 
