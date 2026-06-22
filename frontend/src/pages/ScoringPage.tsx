@@ -229,7 +229,7 @@ function CandidateRow({ result, rank }: { result: CandidateResultOut; rank: numb
         <td className="py-3 px-3">
           <div className="flex items-center gap-2">
             <Badge status={result.status} />
-            {result.manipulation_attempt && <AlertTriangle size={14} className="text-red-500" title="Попытка манипуляции" />}
+            {result.manipulation_attempt && <span title="Попытка манипуляции"><AlertTriangle size={14} className="text-red-500" /></span>}
           </div>
         </td>
         <td className="py-3 px-3 text-gray-400 w-6">
