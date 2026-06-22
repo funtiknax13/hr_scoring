@@ -29,7 +29,7 @@ docker compose up
 | `DEEPSEEK_API_KEY` | Ключ DeepSeek API (обязателен для скоринга) |
 | `DEEPSEEK_BASE_URL` | URL API, по умолчанию `https://api.deepseek.com` |
 | `SJ_API_KEY` | Ключ SuperJob API |
-| `HH_CLIENT_ID` | Client ID приложения HH |
+| `HH_CLIENT_ID` | Client ID приложения HH (см. примечание ниже) |
 | `HH_CLIENT_SECRET` | Client Secret приложения HH |
 | `HH_TOKEN` | OAuth-токен HH (заполняется через `--auth`) |
 | `HH_USER_AGENT` | Идентификатор приложения для HH API |
@@ -65,42 +65,69 @@ python -c "import secrets; print(secrets.token_hex(32))"
 docker compose up          # запустить всё
 docker compose up --build  # пересобрать образы
 
-pytest                     # тесты
-ruff check . && ruff format .  # линт и форматирование
-
 # внутри контейнера backend:
 alembic upgrade head       # применить миграции
 python seed.py             # создать admin-пользователя
-python -m eval.run         # прогон eval скоринга
 ```
+
+---
+
+## Источники данных
+
+### SuperJob
+
+Работает. Для подключения нужен API-ключ от [api.superjob.ru](https://api.superjob.ru), укажи его в `SJ_API_KEY`.
+
+### HeadHunter
+
+> **Не работает.** Публичный API закрыт с декабря 2025 — теперь требуется OAuth через работодательский аккаунт. Заявка на [dev.hh.ru](https://dev.hh.ru) подана, ожидает одобрения. После одобрения нужно пройти авторизацию: `python hh_fetch.py --auth`.
+
+---
+
+## Добавление нового источника
+
+Все источники реализуют единый интерфейс из `backend/app/sources/base.py`. Чтобы добавить новый:
+
+**1. Создать модуль** `backend/app/sources/<название>.py`:
+
+```python
+from app.sources.base import BaseSource, VacancyRow
+
+class MySource(BaseSource):
+    def search(self, query: str, city: str | None, max_pages: int) -> list[VacancyRow]:
+        # Запросы к API, возвращаем список VacancyRow
+        ...
+```
+
+`VacancyRow` — датакласс с полями: `external_id`, `title`, `company`, `location`, `url`, `salary_from`, `salary_to`, `currency`, `description`.
+
+**2. Зарегистрировать** в `backend/app/sources/registry.py`:
+
+```python
+from app.sources.mymodule import MySource
+
+SOURCES: dict[str, BaseSource] = {
+    "hh": HHSource(),
+    "sj": SJSource(),
+    "my": MySource(),   # добавить строку
+}
+```
+
+**3. Добавить эндпоинт** в `backend/app/routers/vacancies.py` по аналогии с `/hh` и `/sj`.
+
+После этого новый источник автоматически становится доступен в расписаниях Celery (поле `source` в `ScheduledSearch`).
 
 ---
 
 ## Скрипты (автономный режим)
 
-До появления веб-интерфейса скоринг и выгрузка работали через CLI-скрипты.
-Они остаются для отладки и ручных прогонов.
+CLI-скрипты остаются для отладки и ручных прогонов.
 
-### `score.py`
-```bash
-python score.py [--data-dir data] [--vacancy <файл>] [--resumes-dir data/resumes]
-                [--model deepseek-chat] [--no-cache] [--out results.json]
-```
-Результат — таблица в консоли и `results.json`.
-
-### `hh_fetch.py`
-
-> Требует одобрения заявки на [dev.hh.ru](https://dev.hh.ru). Публичный API закрыт с декабря 2025.
-
-```bash
-python hh_fetch.py --auth   # первичная авторизация (один раз)
-python hh_fetch.py          # выгрузка вакансий в CSV
-```
-
-### `sj_fetch.py`
-```bash
-python sj_fetch.py          # выгрузка вакансий SuperJob в CSV
-```
+| Скрипт | Описание |
+|---|---|
+| `python score.py` | Скоринг из командной строки |
+| `python hh_fetch.py --auth` | Первичная авторизация HH (когда заработает) |
+| `python sj_fetch.py` | Ручная выгрузка SuperJob в CSV |
 
 ---
 
@@ -109,4 +136,4 @@ python sj_fetch.py          # выгрузка вакансий SuperJob в CSV
 - **Backend:** Python 3.12, FastAPI, SQLAlchemy, Alembic, PostgreSQL
 - **LLM:** DeepSeek через OpenAI-совместимый SDK
 - **Frontend:** React 18, Vite, TypeScript, Tailwind CSS
-- **Инфра:** Docker Compose, Celery + Redis (планируется)
+- **Инфра:** Docker Compose, Celery + Redis
