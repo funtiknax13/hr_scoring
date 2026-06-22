@@ -25,12 +25,11 @@ jobs:
             git pull origin main
 
             # Пересобираем и перезапускаем контейнеры
-            docker compose pull || true
-            docker compose up --build -d
+            docker compose -f docker-compose.prod.yml up --build -d
 
             # Применяем миграции (ждём, пока БД поднимется)
             sleep 5
-            docker compose run --rm backend alembic upgrade head
+            docker compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
 
             # Убираем неиспользуемые образы
             docker image prune -f
